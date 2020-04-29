@@ -1,0 +1,11 @@
+name: upload-packager
+group: profzone
+owner: johnnyeven
+version: 0.0.0
+description: 数据打包服务
+program_language: golang
+workflow:
+  extends: feature-pr
+scripts:
+  build: go build -v -o $PROJECT_NAME && libtools swagger
+  test: go test
