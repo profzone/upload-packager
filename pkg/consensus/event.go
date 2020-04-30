@@ -3,6 +3,7 @@ package consensus
 import (
 	"bytes"
 	"encoding/gob"
+	"longhorn/upload-packager/internal/constants/enum"
 )
 
 type CreatePeerBody struct {
@@ -16,8 +17,8 @@ type Marshaler interface {
 }
 
 type LogEntryEvent struct {
-	Key   string
-	Value string
+	Type    enum.EventType
+	Payload []byte
 }
 
 func (l LogEntryEvent) Marshal() (result []byte, err error) {

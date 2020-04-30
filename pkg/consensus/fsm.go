@@ -2,11 +2,13 @@ package consensus
 
 import (
 	"bytes"
+	"encoding/binary"
 	"encoding/gob"
 	"github.com/hashicorp/raft"
 	"github.com/sirupsen/logrus"
 	"io"
 	"io/ioutil"
+	"longhorn/upload-packager/internal/constants/enum"
 	"longhorn/upload-packager/pkg/storage"
 	"sync"
 )
@@ -35,10 +37,10 @@ func NewFSM(r *Raft) *FSM {
 	return fsm
 }
 
-func (F *FSM) InitPartitions(count uint16) {
+func (F *FSM) InitPartitions(count uint16) bool {
 	// if length of the partitions is bigger than 0, it represents that restore proceeded
 	if len(F.partitions) > 0 {
-		return
+		return false
 	}
 	var index uint16 = 0
 	serverID := F.raft.GetServerID()
@@ -50,6 +52,8 @@ func (F *FSM) InitPartitions(count uint16) {
 		F.partitionReadIndex[serverID] = append(F.partitionReadIndex[serverID], index)
 		index++
 	}
+
+	return true
 }
 
 // when call this method, you need synced call
@@ -105,7 +109,19 @@ func (F *FSM) Unmarshal(data []byte) (err error) {
 }
 
 func (F *FSM) Apply(logEntryEvent *raft.Log) interface{} {
-	F.Push(logEntryEvent.Data)
+	entry := &LogEntryEvent{}
+	err := entry.Unmarshal(logEntryEvent.Data)
+	if err != nil {
+		return err
+	}
+
+	switch entry.Type {
+	case enum.EVENT_TYPE__MESSAAGE:
+		F.Push(entry.Payload)
+	case enum.EVENT_TYPE__PARTITION:
+		count := binary.BigEndian.Uint16(entry.Payload)
+		F.InitPartitions(count)
+	}
 	return nil
 }
 

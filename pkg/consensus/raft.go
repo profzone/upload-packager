@@ -1,12 +1,15 @@
 package consensus
 
 import (
+	"encoding/binary"
 	"fmt"
 	"github.com/fatih/color"
 	"github.com/hashicorp/raft"
 	raftboltdb "github.com/hashicorp/raft-boltdb"
 	"github.com/profzone/eden-framework/pkg/courier/client"
+	"github.com/sirupsen/logrus"
 	"longhorn/upload-packager/internal/clients/client_peer"
+	"longhorn/upload-packager/internal/constants/enum"
 	"net"
 	"os"
 	"path/filepath"
@@ -35,6 +38,27 @@ func (r *Raft) Init() error {
 			select {
 			case r.isLeader = <-r.stateNotify:
 				color.Red("Leadership is changed: %v", r.isLeader)
+
+				if r.isLeader {
+					var count uint16 = 5
+					if r.fsm.InitPartitions(count) {
+						payload := make([]byte, 2)
+						binary.BigEndian.PutUint16(payload, count)
+						entry := LogEntryEvent{
+							Type:    enum.EVENT_TYPE__PARTITION,
+							Payload: payload,
+						}
+						data, err := entry.Marshal()
+						if err != nil {
+							logrus.Panic(err)
+						}
+
+						future := r.Apply(data, 10*time.Second)
+						if err := future.Error(); err != nil {
+							logrus.Panic(err)
+						}
+					}
+				}
 			}
 		}
 	}()
@@ -80,7 +104,6 @@ func (r *Raft) Init() error {
 			},
 		}
 		r.node.BootstrapCluster(config)
-		r.fsm.InitPartitions(2)
 	} else {
 		address, err := net.ResolveTCPAddr("tcp", r.JoinAddr)
 		if err != nil {
@@ -145,7 +168,16 @@ func (r *Raft) Push(data []byte) error {
 		return fmt.Errorf("only leader can set data")
 	}
 
-	applyFuture := r.Apply(data, 10*time.Second)
+	entry := LogEntryEvent{
+		Type:    enum.EVENT_TYPE__MESSAAGE,
+		Payload: data,
+	}
+	result, err := entry.Marshal()
+	if err != nil {
+		return err
+	}
+
+	applyFuture := r.Apply(result, 10*time.Second)
 	if err := applyFuture.Error(); err != nil {
 		return err
 	}
