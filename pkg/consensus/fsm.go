@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"encoding/gob"
+	"fmt"
 	"github.com/hashicorp/raft"
 	"github.com/sirupsen/logrus"
 	"io"
@@ -58,12 +59,20 @@ func (F *FSM) InitPartitions(count uint16) bool {
 
 // when call this method, you need synced call
 func (F *FSM) getNextReadPartition() *storage.Partition {
-	if F.currentReadPartition >= len(F.partitionReadIndex) {
-		F.currentReadPartition = 0
-	}
+	var p *storage.Partition
+	var partitionCount = len(F.partitions)
+	var partitionReadCount = len(F.partitionReadIndex[F.raft.GetServerID()])
+	for i := 0; i < partitionCount; i++ {
+		if F.currentReadPartition >= partitionReadCount {
+			F.currentReadPartition = 0
+		}
 
-	p := F.partitions[F.partitionReadIndex[F.raft.GetServerID()][F.currentReadPartition]]
-	F.currentReadPartition++
+		p = F.partitions[F.partitionReadIndex[F.raft.GetServerID()][F.currentReadPartition]]
+		if p.Length() > 0 {
+			break
+		}
+		F.currentReadPartition++
+	}
 	return p
 }
 
@@ -83,6 +92,9 @@ func (F *FSM) Pop() ([]byte, error) {
 	defer F.RUnlock()
 
 	p := F.getNextReadPartition()
+	if p == nil {
+		return nil, fmt.Errorf("no available partition")
+	}
 	return p.Pop()
 }
 
