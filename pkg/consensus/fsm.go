@@ -25,6 +25,163 @@ type FSM struct {
 	currentReadPartition  int
 }
 
+func (F *FSM) GobDecode(data []byte) error {
+	buf := bytes.NewReader(data)
+
+	// decode partitions
+	lengthBytes := make([]byte, 8)
+	_, err := buf.Read(lengthBytes)
+	if err != nil {
+		return err
+	}
+	partitionLength := binary.BigEndian.Uint64(lengthBytes)
+	partitionBytes := make([]byte, partitionLength)
+	_, err = buf.Read(partitionBytes)
+	if err != nil {
+		return err
+	}
+
+	partitionReader := bytes.NewReader(partitionBytes)
+	decoder := gob.NewDecoder(partitionReader)
+	err = decoder.Decode(&F.partitions)
+	if err != nil {
+		return err
+	}
+
+	// decode partitionWriteIndex
+	_, err = buf.Read(lengthBytes)
+	if err != nil {
+		return err
+	}
+	partitionWriteIndexLength := binary.BigEndian.Uint64(lengthBytes)
+	partitionWriteIndexBytes := make([]byte, partitionWriteIndexLength)
+	_, err = buf.Read(partitionWriteIndexBytes)
+	if err != nil {
+		return err
+	}
+
+	partitionWriteIndexBytesReader := bytes.NewReader(partitionWriteIndexBytes)
+	decoder = gob.NewDecoder(partitionWriteIndexBytesReader)
+	err = decoder.Decode(&F.partitionWriteIndex)
+	if err != nil {
+		return err
+	}
+
+	// decode partitionReadIndex
+	_, err = buf.Read(lengthBytes)
+	if err != nil {
+		return err
+	}
+	partitionReadIndexLength := binary.BigEndian.Uint64(lengthBytes)
+	partitionReadIndexBytes := make([]byte, partitionReadIndexLength)
+	_, err = buf.Read(partitionReadIndexBytes)
+	if err != nil {
+		return err
+	}
+
+	partitionReadIndexBytesReader := bytes.NewReader(partitionReadIndexBytes)
+	decoder = gob.NewDecoder(partitionReadIndexBytesReader)
+	err = decoder.Decode(&F.partitionReadIndex)
+	if err != nil {
+		return err
+	}
+
+	// decode currentWritePartition
+	_, err = buf.Read(lengthBytes)
+	if err != nil {
+		return err
+	}
+	F.currentWritePartition = int(binary.BigEndian.Uint64(lengthBytes))
+
+	// decode currentWritePartition
+	_, err = buf.Read(lengthBytes)
+	if err != nil {
+		return err
+	}
+	F.currentReadPartition = int(binary.BigEndian.Uint64(lengthBytes))
+
+	return nil
+}
+
+func (F *FSM) GobEncode() ([]byte, error) {
+	buf := bytes.NewBuffer(make([]byte, 0))
+	partitionBuffer := bytes.NewBuffer(make([]byte, 0))
+	encoder := gob.NewEncoder(partitionBuffer)
+
+	// encode partitions
+	err := encoder.Encode(F.partitions)
+	if err != nil {
+		return nil, err
+	}
+
+	partitionLengthBytes := make([]byte, 8)
+	binary.BigEndian.PutUint64(partitionLengthBytes, uint64(len(partitionBuffer.Bytes())))
+	_, err = buf.Write(partitionLengthBytes)
+	if err != nil {
+		return nil, err
+	}
+	_, err = buf.Write(partitionBuffer.Bytes())
+	if err != nil {
+		return nil, err
+	}
+
+	// encode partitionWriteIndex
+	partitionBuffer = bytes.NewBuffer(make([]byte, 0))
+	encoder = gob.NewEncoder(partitionBuffer)
+	err = encoder.Encode(F.partitionWriteIndex)
+	if err != nil {
+		return nil, err
+	}
+
+	partitionWriteIndexLengthBytes := make([]byte, 8)
+	binary.BigEndian.PutUint64(partitionWriteIndexLengthBytes, uint64(len(partitionBuffer.Bytes())))
+	_, err = buf.Write(partitionWriteIndexLengthBytes)
+	if err != nil {
+		return nil, err
+	}
+	_, err = buf.Write(partitionBuffer.Bytes())
+	if err != nil {
+		return nil, err
+	}
+
+	// encode partitionReadIndex
+	partitionBuffer = bytes.NewBuffer(make([]byte, 0))
+	encoder = gob.NewEncoder(partitionBuffer)
+	err = encoder.Encode(F.partitionReadIndex)
+	if err != nil {
+		return nil, err
+	}
+
+	partitionReadIndexLengthBytes := make([]byte, 8)
+	binary.BigEndian.PutUint64(partitionReadIndexLengthBytes, uint64(len(partitionBuffer.Bytes())))
+	_, err = buf.Write(partitionReadIndexLengthBytes)
+	if err != nil {
+		return nil, err
+	}
+	_, err = buf.Write(partitionBuffer.Bytes())
+	if err != nil {
+		return nil, err
+	}
+
+	// encode currentWritePartition
+	currentWritePartitionBytes := make([]byte, 8)
+	binary.BigEndian.PutUint64(currentWritePartitionBytes, uint64(F.currentWritePartition))
+	_, err = buf.Write(currentWritePartitionBytes)
+	if err != nil {
+		return nil, err
+	}
+
+	// encode currentReadPartition
+	currentReadPartitionBytes := make([]byte, 8)
+	binary.BigEndian.PutUint64(currentReadPartitionBytes, uint64(F.currentReadPartition))
+	_, err = buf.Write(currentReadPartitionBytes)
+	if err != nil {
+		return nil, err
+	}
+
+	return buf.Bytes(), nil
+}
+
 func NewFSM(r *Raft) *FSM {
 	fsm := &FSM{
 		raft:                r,
@@ -106,17 +263,17 @@ func (F *FSM) Push(data []byte) {
 	p.Push(data)
 }
 
-func (F FSM) Marshal() (result []byte, err error) {
+func (F *FSM) Marshal() (result []byte, err error) {
 	buf := bytes.NewBuffer(result)
 	enc := gob.NewEncoder(buf)
-	err = enc.Encode(F.partitions)
+	err = enc.Encode(F)
 	return buf.Bytes(), err
 }
 
 func (F *FSM) Unmarshal(data []byte) (err error) {
 	buf := bytes.NewBuffer(data)
 	dec := gob.NewDecoder(buf)
-	err = dec.Decode(&F.partitions)
+	err = dec.Decode(F)
 	return
 }
 

@@ -1,6 +1,11 @@
 package storage
 
-import "fmt"
+import (
+	"bytes"
+	"encoding/binary"
+	"encoding/gob"
+	"fmt"
+)
 
 // minQueueLen is smallest capacity that queue may have.
 // Must be power of 2 for bitwise modulus: x % n == x & (n - 1).
@@ -96,4 +101,111 @@ func (p *Partition) Pop() ([]byte, error) {
 		p.resize()
 	}
 	return ret, nil
+}
+
+func (p *Partition) GobDecode(data []byte) error {
+	buf := bytes.NewReader(data)
+
+	// decode events
+	uint64Bytes := make([]byte, 8)
+	_, err := buf.Read(uint64Bytes)
+	if err != nil {
+		return err
+	}
+	eventsLength := binary.BigEndian.Uint64(uint64Bytes)
+	eventsBytes := make([]byte, eventsLength)
+	_, err = buf.Read(eventsBytes)
+	if err != nil {
+		return err
+	}
+
+	eventsReader := bytes.NewReader(eventsBytes)
+	decoder := gob.NewDecoder(eventsReader)
+	err = decoder.Decode(&p.events)
+	if err != nil {
+		return err
+	}
+
+	// decode Index
+	_, err = buf.Read(uint64Bytes)
+	if err != nil {
+		return err
+	}
+	p.Index = uint16(binary.BigEndian.Uint64(uint64Bytes))
+
+	// decode head
+	_, err = buf.Read(uint64Bytes)
+	if err != nil {
+		return err
+	}
+	p.head = int(binary.BigEndian.Uint64(uint64Bytes))
+
+	// decode tail
+	_, err = buf.Read(uint64Bytes)
+	if err != nil {
+		return err
+	}
+	p.tail = int(binary.BigEndian.Uint64(uint64Bytes))
+
+	// decode count
+	_, err = buf.Read(uint64Bytes)
+	if err != nil {
+		return err
+	}
+	p.count = int(binary.BigEndian.Uint64(uint64Bytes))
+
+	return nil
+}
+
+func (p *Partition) GobEncode() ([]byte, error) {
+	buf := bytes.NewBuffer(make([]byte, 0))
+	eventBuffer := bytes.NewBuffer(make([]byte, 0))
+	encoder := gob.NewEncoder(eventBuffer)
+
+	// encode events
+	err := encoder.Encode(p.events)
+	if err != nil {
+		return nil, err
+	}
+
+	uint64Bytes := make([]byte, 8)
+	binary.BigEndian.PutUint64(uint64Bytes, uint64(len(eventBuffer.Bytes())))
+	_, err = buf.Write(uint64Bytes)
+	if err != nil {
+		return nil, err
+	}
+	_, err = buf.Write(eventBuffer.Bytes())
+	if err != nil {
+		return nil, err
+	}
+
+	// encode Index
+	binary.BigEndian.PutUint64(uint64Bytes, uint64(p.Index))
+	_, err = buf.Write(uint64Bytes)
+	if err != nil {
+		return nil, err
+	}
+
+	// encode head
+	binary.BigEndian.PutUint64(uint64Bytes, uint64(p.head))
+	_, err = buf.Write(uint64Bytes)
+	if err != nil {
+		return nil, err
+	}
+
+	// encode tail
+	binary.BigEndian.PutUint64(uint64Bytes, uint64(p.tail))
+	_, err = buf.Write(uint64Bytes)
+	if err != nil {
+		return nil, err
+	}
+
+	// encode count
+	binary.BigEndian.PutUint64(uint64Bytes, uint64(p.count))
+	_, err = buf.Write(uint64Bytes)
+	if err != nil {
+		return nil, err
+	}
+
+	return buf.Bytes(), nil
 }
