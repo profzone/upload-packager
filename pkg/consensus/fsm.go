@@ -25,147 +25,106 @@ type FSM struct {
 	currentReadPartition  int
 }
 
-func (F *FSM) GobDecode(data []byte) error {
-	buf := bytes.NewReader(data)
+func (f *FSM) encodeToBytes(target interface{}, buffer *bytes.Buffer) error {
+	partitionBuffer := bytes.NewBuffer(make([]byte, 0))
+	encoder := gob.NewEncoder(partitionBuffer)
+	err := encoder.Encode(target)
+	if err != nil {
+		return err
+	}
 
-	// decode partitions
+	partitionLengthBytes := make([]byte, 8)
+	binary.BigEndian.PutUint64(partitionLengthBytes, uint64(len(partitionBuffer.Bytes())))
+	_, err = buffer.Write(partitionLengthBytes)
+	if err != nil {
+		return err
+	}
+	_, err = buffer.Write(partitionBuffer.Bytes())
+	return err
+}
+
+func (f *FSM) decodeFromBytes(target interface{}, buffer *bytes.Reader) error {
 	lengthBytes := make([]byte, 8)
-	_, err := buf.Read(lengthBytes)
+	_, err := buffer.Read(lengthBytes)
 	if err != nil {
 		return err
 	}
 	partitionLength := binary.BigEndian.Uint64(lengthBytes)
 	partitionBytes := make([]byte, partitionLength)
-	_, err = buf.Read(partitionBytes)
+	_, err = buffer.Read(partitionBytes)
 	if err != nil {
 		return err
 	}
 
 	partitionReader := bytes.NewReader(partitionBytes)
 	decoder := gob.NewDecoder(partitionReader)
-	err = decoder.Decode(&F.partitions)
+	err = decoder.Decode(target)
+	return err
+}
+
+func (f *FSM) GobDecode(data []byte) error {
+	buf := bytes.NewReader(data)
+
+	// decode partitions
+	err := f.decodeFromBytes(&f.partitions, buf)
 	if err != nil {
 		return err
 	}
 
 	// decode partitionWriteIndex
-	_, err = buf.Read(lengthBytes)
-	if err != nil {
-		return err
-	}
-	partitionWriteIndexLength := binary.BigEndian.Uint64(lengthBytes)
-	partitionWriteIndexBytes := make([]byte, partitionWriteIndexLength)
-	_, err = buf.Read(partitionWriteIndexBytes)
-	if err != nil {
-		return err
-	}
-
-	partitionWriteIndexBytesReader := bytes.NewReader(partitionWriteIndexBytes)
-	decoder = gob.NewDecoder(partitionWriteIndexBytesReader)
-	err = decoder.Decode(&F.partitionWriteIndex)
+	err = f.decodeFromBytes(&f.partitionWriteIndex, buf)
 	if err != nil {
 		return err
 	}
 
 	// decode partitionReadIndex
-	_, err = buf.Read(lengthBytes)
-	if err != nil {
-		return err
-	}
-	partitionReadIndexLength := binary.BigEndian.Uint64(lengthBytes)
-	partitionReadIndexBytes := make([]byte, partitionReadIndexLength)
-	_, err = buf.Read(partitionReadIndexBytes)
+	err = f.decodeFromBytes(&f.partitionReadIndex, buf)
 	if err != nil {
 		return err
 	}
 
-	partitionReadIndexBytesReader := bytes.NewReader(partitionReadIndexBytes)
-	decoder = gob.NewDecoder(partitionReadIndexBytesReader)
-	err = decoder.Decode(&F.partitionReadIndex)
+	// decode currentWritePartition
+	lengthBytes := make([]byte, 8)
+	_, err = buf.Read(lengthBytes)
 	if err != nil {
 		return err
 	}
+	f.currentWritePartition = int(binary.BigEndian.Uint64(lengthBytes))
 
 	// decode currentWritePartition
 	_, err = buf.Read(lengthBytes)
 	if err != nil {
 		return err
 	}
-	F.currentWritePartition = int(binary.BigEndian.Uint64(lengthBytes))
-
-	// decode currentWritePartition
-	_, err = buf.Read(lengthBytes)
-	if err != nil {
-		return err
-	}
-	F.currentReadPartition = int(binary.BigEndian.Uint64(lengthBytes))
+	f.currentReadPartition = int(binary.BigEndian.Uint64(lengthBytes))
 
 	return nil
 }
 
-func (F *FSM) GobEncode() ([]byte, error) {
+func (f *FSM) GobEncode() ([]byte, error) {
 	buf := bytes.NewBuffer(make([]byte, 0))
-	partitionBuffer := bytes.NewBuffer(make([]byte, 0))
-	encoder := gob.NewEncoder(partitionBuffer)
 
 	// encode partitions
-	err := encoder.Encode(F.partitions)
-	if err != nil {
-		return nil, err
-	}
-
-	partitionLengthBytes := make([]byte, 8)
-	binary.BigEndian.PutUint64(partitionLengthBytes, uint64(len(partitionBuffer.Bytes())))
-	_, err = buf.Write(partitionLengthBytes)
-	if err != nil {
-		return nil, err
-	}
-	_, err = buf.Write(partitionBuffer.Bytes())
+	err := f.encodeToBytes(f.partitions, buf)
 	if err != nil {
 		return nil, err
 	}
 
 	// encode partitionWriteIndex
-	partitionBuffer = bytes.NewBuffer(make([]byte, 0))
-	encoder = gob.NewEncoder(partitionBuffer)
-	err = encoder.Encode(F.partitionWriteIndex)
-	if err != nil {
-		return nil, err
-	}
-
-	partitionWriteIndexLengthBytes := make([]byte, 8)
-	binary.BigEndian.PutUint64(partitionWriteIndexLengthBytes, uint64(len(partitionBuffer.Bytes())))
-	_, err = buf.Write(partitionWriteIndexLengthBytes)
-	if err != nil {
-		return nil, err
-	}
-	_, err = buf.Write(partitionBuffer.Bytes())
+	err = f.encodeToBytes(f.partitionWriteIndex, buf)
 	if err != nil {
 		return nil, err
 	}
 
 	// encode partitionReadIndex
-	partitionBuffer = bytes.NewBuffer(make([]byte, 0))
-	encoder = gob.NewEncoder(partitionBuffer)
-	err = encoder.Encode(F.partitionReadIndex)
-	if err != nil {
-		return nil, err
-	}
-
-	partitionReadIndexLengthBytes := make([]byte, 8)
-	binary.BigEndian.PutUint64(partitionReadIndexLengthBytes, uint64(len(partitionBuffer.Bytes())))
-	_, err = buf.Write(partitionReadIndexLengthBytes)
-	if err != nil {
-		return nil, err
-	}
-	_, err = buf.Write(partitionBuffer.Bytes())
+	err = f.encodeToBytes(f.partitionReadIndex, buf)
 	if err != nil {
 		return nil, err
 	}
 
 	// encode currentWritePartition
 	currentWritePartitionBytes := make([]byte, 8)
-	binary.BigEndian.PutUint64(currentWritePartitionBytes, uint64(F.currentWritePartition))
+	binary.BigEndian.PutUint64(currentWritePartitionBytes, uint64(f.currentWritePartition))
 	_, err = buf.Write(currentWritePartitionBytes)
 	if err != nil {
 		return nil, err
@@ -173,7 +132,7 @@ func (F *FSM) GobEncode() ([]byte, error) {
 
 	// encode currentReadPartition
 	currentReadPartitionBytes := make([]byte, 8)
-	binary.BigEndian.PutUint64(currentReadPartitionBytes, uint64(F.currentReadPartition))
+	binary.BigEndian.PutUint64(currentReadPartitionBytes, uint64(f.currentReadPartition))
 	_, err = buf.Write(currentReadPartitionBytes)
 	if err != nil {
 		return nil, err
@@ -195,19 +154,19 @@ func NewFSM(r *Raft) *FSM {
 	return fsm
 }
 
-func (F *FSM) InitPartitions(count uint16) bool {
+func (f *FSM) InitPartitions(count uint16) bool {
 	// if length of the partitions is bigger than 0, it represents that restore proceeded
-	if len(F.partitions) > 0 {
+	if len(f.partitions) > 0 {
 		return false
 	}
 	var index uint16 = 0
-	serverID := F.raft.GetServerID()
-	F.partitionReadIndex[serverID] = make([]uint16, 0)
+	serverID := f.raft.GetServerID()
+	f.partitionReadIndex[serverID] = make([]uint16, 0)
 	for index < count {
 		p := storage.NewPartition(index)
-		F.partitions[index] = p
-		F.partitionWriteIndex = append(F.partitionWriteIndex, index)
-		F.partitionReadIndex[serverID] = append(F.partitionReadIndex[serverID], index)
+		f.partitions[index] = p
+		f.partitionWriteIndex = append(f.partitionWriteIndex, index)
+		f.partitionReadIndex[serverID] = append(f.partitionReadIndex[serverID], index)
 		index++
 	}
 
@@ -215,69 +174,69 @@ func (F *FSM) InitPartitions(count uint16) bool {
 }
 
 // when call this method, you need synced call
-func (F *FSM) getNextReadPartition() *storage.Partition {
+func (f *FSM) getNextReadPartition() *storage.Partition {
 	var p *storage.Partition
-	var partitionCount = len(F.partitions)
-	var partitionReadCount = len(F.partitionReadIndex[F.raft.GetServerID()])
+	var partitionCount = len(f.partitions)
+	var partitionReadCount = len(f.partitionReadIndex[f.raft.GetServerID()])
 	for i := 0; i < partitionCount; i++ {
-		if F.currentReadPartition >= partitionReadCount {
-			F.currentReadPartition = 0
+		f.currentReadPartition++
+		if f.currentReadPartition >= partitionReadCount {
+			f.currentReadPartition = 0
 		}
 
-		p = F.partitions[F.partitionReadIndex[F.raft.GetServerID()][F.currentReadPartition]]
+		p = f.partitions[f.partitionReadIndex[f.raft.GetServerID()][f.currentReadPartition]]
 		if p.Length() > 0 {
-			break
+			return p
 		}
-		F.currentReadPartition++
 	}
-	return p
+	return nil
 }
 
 // when call this method, you need synced call
-func (F *FSM) getNextWritePartition() *storage.Partition {
-	if F.currentWritePartition >= len(F.partitionWriteIndex) {
-		F.currentWritePartition = 0
+func (f *FSM) getNextWritePartition() *storage.Partition {
+	if f.currentWritePartition >= len(f.partitionWriteIndex) {
+		f.currentWritePartition = 0
 	}
 
-	p := F.partitions[F.partitionWriteIndex[F.currentWritePartition]]
-	F.currentWritePartition++
+	p := f.partitions[f.partitionWriteIndex[f.currentWritePartition]]
+	f.currentWritePartition++
 	return p
 }
 
-func (F *FSM) Pop() ([]byte, error) {
-	F.RLock()
-	defer F.RUnlock()
+func (f *FSM) Pop() ([]byte, error) {
+	f.RLock()
+	defer f.RUnlock()
 
-	p := F.getNextReadPartition()
+	p := f.getNextReadPartition()
 	if p == nil {
 		return nil, fmt.Errorf("no available partition")
 	}
 	return p.Pop()
 }
 
-func (F *FSM) Push(data []byte) {
-	F.Lock()
-	defer F.Unlock()
+func (f *FSM) Push(data []byte) {
+	f.Lock()
+	defer f.Unlock()
 
-	p := F.getNextWritePartition()
+	p := f.getNextWritePartition()
 	p.Push(data)
 }
 
-func (F *FSM) Marshal() (result []byte, err error) {
+func (f *FSM) Marshal() (result []byte, err error) {
 	buf := bytes.NewBuffer(result)
 	enc := gob.NewEncoder(buf)
-	err = enc.Encode(F)
+	err = enc.Encode(f)
 	return buf.Bytes(), err
 }
 
-func (F *FSM) Unmarshal(data []byte) (err error) {
+func (f *FSM) Unmarshal(data []byte) (err error) {
 	buf := bytes.NewBuffer(data)
 	dec := gob.NewDecoder(buf)
-	err = dec.Decode(F)
+	err = dec.Decode(f)
 	return
 }
 
-func (F *FSM) Apply(logEntryEvent *raft.Log) interface{} {
+func (f *FSM) Apply(logEntryEvent *raft.Log) interface{} {
 	entry := &LogEntryEvent{}
 	err := entry.Unmarshal(logEntryEvent.Data)
 	if err != nil {
@@ -286,25 +245,25 @@ func (F *FSM) Apply(logEntryEvent *raft.Log) interface{} {
 
 	switch entry.Type {
 	case enum.EVENT_TYPE__MESSAAGE:
-		F.Push(entry.Payload)
+		f.Push(entry.Payload)
 	case enum.EVENT_TYPE__PARTITION:
 		count := binary.BigEndian.Uint16(entry.Payload)
-		F.InitPartitions(count)
+		f.InitPartitions(count)
 	}
 	return nil
 }
 
-func (F *FSM) Snapshot() (raft.FSMSnapshot, error) {
-	return F.snapshot, nil
+func (f *FSM) Snapshot() (raft.FSMSnapshot, error) {
+	return f.snapshot, nil
 }
 
-func (F *FSM) Restore(reader io.ReadCloser) error {
+func (f *FSM) Restore(reader io.ReadCloser) error {
 	data, err := ioutil.ReadAll(reader)
 	if err != nil {
 		return err
 	}
 
-	err = F.Unmarshal(data)
+	err = f.Unmarshal(data)
 	logrus.Debug("restore from snapshot")
 	return err
 }
