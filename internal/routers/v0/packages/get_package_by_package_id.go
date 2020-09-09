@@ -3,8 +3,8 @@ package packages
 import (
 	"context"
 	"github.com/profzone/eden-framework/pkg/courier"
-	"github.com/profzone/eden-framework/pkg/courier/enumeration"
 	"github.com/profzone/eden-framework/pkg/courier/httpx"
+	"github.com/profzone/eden-framework/pkg/enumeration"
 )
 
 func init() {

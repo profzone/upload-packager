@@ -2,6 +2,7 @@ package main
 
 import (
 	"github.com/profzone/eden-framework/pkg/application"
+	"github.com/profzone/eden-framework/pkg/context"
 	"github.com/sirupsen/logrus"
 	"longhorn/upload-packager/internal/global"
 	"longhorn/upload-packager/internal/routers"
@@ -10,7 +11,7 @@ import (
 func main() {
 	app := application.NewApplication(runner, &global.Config)
 	go app.Start()
-	app.WaitStop(func() error {
+	app.WaitStop(func(ctx *context.WaitStopContext) error {
 		return nil
 	})
 }
